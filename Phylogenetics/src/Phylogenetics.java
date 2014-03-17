@@ -4,8 +4,11 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 
 /**
@@ -18,20 +21,81 @@ import javax.swing.JFrame;
  */
 public class Phylogenetics {
 
+	/* FILE I/O */
+	public static final Pattern CLUSTALW_LINE = Pattern
+			.compile("^([^\\s]+)\\s+([A-Z_\\-]+)");
+
 	/**
-	 * Reads a FASTA file of a set of sequences and stores each sequence in a
-	 * different organism
+	 * TODO get concat to work properly, currently only first line is read
+	 * @param f
+	 * @return
+	 * @throws IOException
+	 */
+	public static ArrayList<Organism<Nucleotide>> readNucleotideClustalW(File f) throws IOException{
+
+		BufferedReader br = new BufferedReader(new FileReader(f));
+		ArrayList<Organism<Nucleotide>> organisms = new ArrayList<Organism<Nucleotide>>();
+		HashMap<String, String> seqs_hash = new HashMap<String, String>();
+		
+		String line = "", seq = "", name = "";
+		Matcher m;
+		
+		while((line = br.readLine()) != null){
+			m = CLUSTALW_LINE.matcher(line);
+			if(m.find()){
+				name = m.group(1);
+				seq = m.group(2);
+				if(seqs_hash.get(name)==null) seqs_hash.put(name, seq);
+				else seqs_hash.get(name).concat(seq);
+			}
+		}
+
+		//convert hash to array of organisms
+		for (String name_tmp : seqs_hash.keySet()) {
+			organisms.add(new Organism<Nucleotide>(Nucleotide
+					.parseString(seqs_hash.get(name_tmp)), name_tmp));
+		}
+		
+		br.close();
+		return organisms;
+	}
+	
+	public static ArrayList<Organism<Nucleotide>> readMultipleNucleotideClustalWs(
+			File[] files) throws IOException {
+		ArrayList<Organism<Nucleotide>> organisms = new ArrayList<Organism<Nucleotide>>();
+
+		for (File f : files) {
+			organisms.addAll(readNucleotideClustalW(f));
+		}
+
+		return organisms;
+	}
+
+	/**
+	 * Reads a FASTA file of a set of sequences.
+	 * A regex can be used to extract organism names from headers. (The first
+	 * capture group is used).
+	 * Only the first sequence for a given organism name is stored.
+	 * TODO recover and align multiple sequences from an organism
+	 * -- Maybe require that data is already aligned?
 	 * 
 	 * @param f
 	 *            The FASTA file to be read
 	 * @return
 	 * @throws IOException
 	 */
-	public static ArrayList<Organism<Nucleotide>> readFASTA(File f)
+	public static ArrayList<Organism<Nucleotide>> readFASTA(File f, String regex)
 			throws IOException {
 		BufferedReader br = new BufferedReader(new FileReader(f));
 		ArrayList<Organism<Nucleotide>> organisms = new ArrayList<Organism<Nucleotide>>();
+		HashMap<String, String> seqs_hash = new HashMap<String, String>();
 		String line = "", seq = "", name = "";
+		boolean use_regex = (regex.length() > 0);
+		Pattern p = null;
+		Matcher m;
+		if (use_regex) {
+			p = Pattern.compile(regex);
+		}
 
 		while ((line = br.readLine()) != null) {
 			line.trim();
@@ -39,21 +103,37 @@ public class Phylogenetics {
 			if (line.charAt(0) == '>') {
 				//if this isn't the first line in the file, ie a sequence has already been read
 				if (seq.length() > 0) {
-					organisms.add(new Organism<Nucleotide>(Nucleotide
-							.parseString(seq), name.substring(1)));
+					//add to hash if organism hasn't been added yet
+					if (!seqs_hash.containsKey(name)) seqs_hash.put(name, seq);
 				}
 
-				//TODO allow user to pass regex to get sample name from header
-				name = line; //sequence header
-				seq = ""; //new sequence
+				if (use_regex) {
+					m = p.matcher(line);
+					name = m.find() ? m.group(1) : line.substring(1);
+				}
+				else name = line.substring(1); //sequence header
+				seq = ""; //new sequence 
 			}
 			else {
 				seq += line;
 			}
 		}
+		//add final sequence
+		if (!seqs_hash.containsKey(name)) seqs_hash.put(name, seq);
+
+		//convert hash to array of organisms
+		for (String name_tmp : seqs_hash.keySet()) {
+			organisms.add(new Organism<Nucleotide>(Nucleotide
+					.parseString(seqs_hash.get(name_tmp)), name_tmp));
+		}
 
 		br.close();
 		return organisms;
+	}
+
+	public static ArrayList<Organism<Nucleotide>> readFASTA(File f)
+			throws IOException {
+		return readFASTA(f, "");
 	}
 
 	/**
@@ -67,16 +147,37 @@ public class Phylogenetics {
 	 *             If an unreadable file is encountered
 	 */
 	public static ArrayList<Organism<Nucleotide>> readMultipleFASTAs(
-			File[] files) throws IOException {
+			File[] files, String regex) throws IOException {
 		ArrayList<Organism<Nucleotide>> organisms = new ArrayList<Organism<Nucleotide>>();
 
 		for (File f : files) {
-			organisms.addAll(readFASTA(f));
+			organisms.addAll(readFASTA(f, regex));
 		}
 
 		return organisms;
 	}
 
+	//calls readMultipleFASTAs with empty regex
+	public static ArrayList<Organism<Nucleotide>> readMultipleFASTAs(
+			File[] files) throws IOException {
+		return readMultipleFASTAs(files, "");
+	}
+
+	/* TREE I/O */
+
+	/* TREE ALGORITHMS */
+
+	/**
+	 * Creates a pairwise distance matrix between organisms using a given
+	 * substitution model
+	 * 
+	 * @param organisms
+	 *            The set of organisms to be used
+	 * @param model
+	 *            The substitution model used to determine pariwise distances
+	 * @return A 2-dimensional ArrayList of Double values representing pairwise
+	 *         distances
+	 */
 	public static <T> ArrayList<ArrayList<Double>> distanceMatrix(
 			ArrayList<Organism<T>> organisms, SubstitutionModel<T> model) {
 		ArrayList<ArrayList<Double>> dist_matrix = new ArrayList<ArrayList<Double>>();
@@ -119,20 +220,11 @@ public class Phylogenetics {
 		//Set up array of partial trees
 		ArrayList<PhyloTree> trees = new ArrayList<PhyloTree>();
 		for (int i = 0; i < organisms.size(); i++) {
-			trees.add(new PhyloTree(organisms.get(i)));
+			trees.add(new PhyloTree(0, organisms.get(i), null));
 		}
 
 		while (trees.size() > 1) {
-//			
-//			//each iteration print the distance matrix, for debug purposes
-//			for (int i = 0; i < dist_matrix.size(); i++) {
-//				for (int j = 0; j < dist_matrix.get(i).size(); j++) {
-//					System.out.print(dist_matrix.get(i).get(j).intValue() + "\t");
-//				}
-//				System.out.println();
-//			}
-//			System.out.println();
-			
+
 			//find smallest i,j
 			int i, j, i_min = -1, j_min = -1;
 			double d_ij, d_min = Double.NaN; //starting, invalid value
@@ -151,26 +243,31 @@ public class Phylogenetics {
 			}
 
 			//group most similar nodes under new node, assign branch lengths D/2 to each
-			PhyloTree newtree = new PhyloTree(trees.get(i_min), trees.get(j_min));
-			newtree.left.branchlength = d_min/2;
-			newtree.right.branchlength = d_min/2;
+			PhyloTree newtree = new PhyloTree(0, null, Arrays.asList(trees
+					.get(i_min), trees.get(j_min)));
+			newtree.children().get(0).branchlength = d_min / 2
+					- newtree.children().get(0).getFirstBranchLength();
+			newtree.children().get(1).branchlength = d_min / 2
+					- newtree.children().get(1).getFirstBranchLength();
 			trees.add(newtree);
-			
+
 			//update group counts
-			int n_i = groupcounts.get(i_min), n_j = groupcounts.get(j_min), n_ij = n_i+n_j; 
+			int n_i = groupcounts.get(i_min), n_j = groupcounts.get(j_min), n_ij = n_i
+					+ n_j;
 			groupcounts.add(n_ij);
-			
+
 			//update distance matrix
 			double newdist; //temp variable for distance between new group and other nodes
 			ArrayList<Double> newrow = new ArrayList<Double>();
-			for(int k=0; k<dist_matrix.size(); k++){
-				newdist = ((double)n_i/n_ij) * dist_matrix.get(k).get(i_min) + ((double)n_j/n_ij) * dist_matrix.get(k).get(j_min);
+			for (int k = 0; k < dist_matrix.size(); k++) {
+				newdist = ((double) n_i / n_ij) * dist_matrix.get(k).get(i_min)
+						+ ((double) n_j / n_ij) * dist_matrix.get(k).get(j_min);
 				dist_matrix.get(k).add(newdist);
 				newrow.add(newdist);
 			}
 			newrow.add(0.0);
 			dist_matrix.add(newrow);
-			
+
 			//remove data corresponding to i_min, j_min
 			//i_min < j_min, so j is removed first to prevent shifting of indices
 			trees.remove(j_min);
@@ -180,7 +277,7 @@ public class Phylogenetics {
 			dist_matrix.remove(j_min);
 			dist_matrix.remove(i_min);
 			//remove columns from individual rows
-			for(ArrayList<Double> row : dist_matrix){
+			for (ArrayList<Double> row : dist_matrix) {
 				row.remove(j_min);
 				row.remove(i_min);
 			}
@@ -190,24 +287,30 @@ public class Phylogenetics {
 	}
 
 	public static void main(String[] args) {
-		//TODO Set up actual interface
-		JFrame frame = new JFrame();
+		/* File dialog */
+				//TODO Set up actual interface
+				JFrame frame = new JFrame();
+		
+				//Set up file dialog
+				FileDialog fd = new FileDialog(frame, "Choose Input Data:", FileDialog.LOAD);
+				fd.setMultipleMode(true);
+				fd.setDirectory("~");
+				fd.setVisible(true);
+		
+				File[] files = fd.getFiles();
 
-		//Set up file dialog
-		FileDialog fd = new FileDialog(frame, "Choose Input Data:", FileDialog.LOAD);
-		fd.setMultipleMode(true);
-		fd.setDirectory("~");
-		fd.setVisible(true);
+		//File[] files = { new File("/Users/raphaelkargon/Dropbox/Programming/Phylogenetics/sample_vertebrates.fasta") };
 
-		File[] files = fd.getFiles();
 		try {
 			ArrayList<Organism<Nucleotide>> organisms = new ArrayList<Organism<Nucleotide>>();
-			organisms = readMultipleFASTAs(files);
+			//organisms = readMultipleFASTAs(files, "");
+			organisms = Phylogenetics.readMultipleNucleotideClustalWs(files);
 
+			System.out.println(organisms.size() + " samples read.");
 			//display organisms that have been read
 			for (Organism<Nucleotide> o : organisms)
 				System.out.println(o);
-		
+
 			PhyloTree tree = UPGMA_Tree(organisms, new SimpleNucleotideModel());
 			System.out.println(tree);
 		}
