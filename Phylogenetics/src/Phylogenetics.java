@@ -26,7 +26,6 @@ public class Phylogenetics {
 			.compile("^([^\\s]+)\\s+([A-Z_\\-]+)");
 
 	/**
-	 * TODO get concat to work properly, currently only first line is read
 	 * @param f
 	 * @return
 	 * @throws IOException
@@ -46,7 +45,7 @@ public class Phylogenetics {
 				name = m.group(1);
 				seq = m.group(2);
 				if(seqs_hash.get(name)==null) seqs_hash.put(name, seq);
-				else seqs_hash.get(name).concat(seq);
+				else seqs_hash.put(name, seqs_hash.get(name).concat(seq));
 			}
 		}
 
@@ -104,7 +103,7 @@ public class Phylogenetics {
 				//if this isn't the first line in the file, ie a sequence has already been read
 				if (seq.length() > 0) {
 					//add to hash if organism hasn't been added yet
-					if (!seqs_hash.containsKey(name)) seqs_hash.put(name, seq);
+					if (seqs_hash.get(name)==null) seqs_hash.put(name, seq);
 				}
 
 				if (use_regex) {
@@ -281,38 +280,40 @@ public class Phylogenetics {
 				row.remove(j_min);
 				row.remove(i_min);
 			}
-		}
+		}	
 
 		return trees.get(0);
 	}
 
 	public static void main(String[] args) {
-		/* File dialog */
-				//TODO Set up actual interface
-				JFrame frame = new JFrame();
-		
-				//Set up file dialog
-				FileDialog fd = new FileDialog(frame, "Choose Input Data:", FileDialog.LOAD);
-				fd.setMultipleMode(true);
-				fd.setDirectory("~");
-				fd.setVisible(true);
-		
-				File[] files = fd.getFiles();
+//				/* File dialog */
+//						//TODO Set up actual interface
+//						JFrame frame = new JFrame();
+//				
+//						//Set up file dialog
+//						FileDialog fd = new FileDialog(frame, "Choose Input Data:", FileDialog.LOAD);
+//						fd.setMultipleMode(true);
+//						fd.setDirectory("~");
+//						fd.setVisible(true);
+//				
+//						File[] files = fd.getFiles();
 
-		//File[] files = { new File("/Users/raphaelkargon/Dropbox/Programming/Phylogenetics/sample_vertebrates.fasta") };
+		File[] files = { new File("/Users/raphaelkargon/Dropbox/Programming/Phylogenetics/sample_vertebrates.fasta") };
 
 		try {
 			ArrayList<Organism<Nucleotide>> organisms = new ArrayList<Organism<Nucleotide>>();
-			//organisms = readMultipleFASTAs(files, "");
-			organisms = Phylogenetics.readMultipleNucleotideClustalWs(files);
-
+			organisms = readMultipleFASTAs(files, "");
+			//organisms = Phylogenetics.readMultipleNucleotideClustalWs(files);
+ 
 			System.out.println(organisms.size() + " samples read.");
 			//display organisms that have been read
 			for (Organism<Nucleotide> o : organisms)
 				System.out.println(o);
-
+			System.out.println();
+			
 			PhyloTree tree = UPGMA_Tree(organisms, new SimpleNucleotideModel());
 			System.out.println(tree);
+			System.out.println(tree.toNewickString());
 		}
 		catch (IOException e) {
 			e.printStackTrace();

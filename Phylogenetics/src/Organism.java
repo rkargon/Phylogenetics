@@ -11,13 +11,22 @@ public class Organism<T> {
 	public String name;
 	
 	public Organism(){
-		this(null, null);
+		this(null, "");
+	}
+	
+	public Organism(String name){
+		this(null, name);
 	}
 	
 	public Organism(T[] traits, String name) {
 		super();
 		this.traits = traits;
 		this.name = name;
+	}
+	
+	public Organism<T> clone(){
+		T[] traits = Arrays.copyOf(this.traits, this.traits.length);
+		return new Organism<T>(traits, this.name);
 	}
 	
 	@Override

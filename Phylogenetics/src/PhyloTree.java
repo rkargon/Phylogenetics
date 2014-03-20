@@ -1,6 +1,11 @@
+import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import javax.swing.DebugGraphics;
 
 /**
  * Implements a phylogenetic tree.
@@ -15,9 +20,15 @@ import java.util.List;
 public class PhyloTree {
 	public double branchlength = 0; //length of branch leading up to the node
 	public Organism<?> organism = null; //this is null unless the object is a leaf node
-
 	private List<PhyloTree> children = new ArrayList<PhyloTree>(); //children of tree, null if the object is a leaf node
 	private boolean isLeaf = true;
+
+	//regexes for Newick matching
+	public static String length_rgx = "[-+]?\\d*\\.?\\d+"; //number
+	public static String name_rgx = "([^\\(\\),;:]*)"; //name, not containing ( ) , ; :
+	public static String subtree_rgx = "(?:\\((.*)\\))?" + name_rgx + "?"
+			+ "(\\:" + length_rgx + ")?;?";//subtree, (...)[name][:length]
+	Pattern newick_p = Pattern.compile(subtree_rgx);
 
 	/* CONSTRUCTORS */
 	public PhyloTree(double branchlength, Organism<?> organism, List<PhyloTree> children) {
@@ -26,6 +37,66 @@ public class PhyloTree {
 		this.organism = organism;
 		if (children != null) this.children = (List<PhyloTree>) children;
 		setLeafState();
+	}
+
+	/**
+	 * Copy constructor
+	 * NOTE: Shallow copy
+	 * Children point to the same objects as t.children.
+	 * Also, regardless of type of t.children, this.children becomes arraylist
+	 * Organism, however, is copied.
+	 * 
+	 * @param t
+	 *            The tree to copy
+	 */
+	public PhyloTree(PhyloTree t) {
+		this.branchlength = t.branchlength;
+		this.organism = t.organism.clone();
+		for (PhyloTree child : t.children) {
+			this.children.add(child);
+		}
+		setLeafState();
+	}
+
+	/**
+	 * Constructs tree based on Newick tree string
+	 */
+	public PhyloTree(String treestr) {
+		Matcher m = newick_p.matcher(treestr);
+		if (m.matches()) {
+			String children_str = m.group(1);
+			String name = m.group(2);
+			double length;
+			try {
+				length = Double.parseDouble(m.group(3).substring(1));
+			}
+			catch (Exception e) {
+				length = 0;
+			}
+
+			this.organism = new Organism<Void>(new Void[0], (name==null ? "" : name));
+			this.branchlength = length;
+			if(children_str!=null && children_str.length()>0){
+				int start=0, end=0;//bounds for substring to start new child
+				int depth = 0;//only top-level commas should be counted
+				char c;
+				for(int i=0; i<children_str.length(); i++){
+					c = children_str.charAt(i);
+					if(c=='(') depth++;
+					else if(c==')') depth--;
+					else if(c==',') {
+						if(depth==0){
+							end = i;
+							children.add(new PhyloTree(children_str.substring(start, end)));
+							start = i+1;
+						}
+					}
+				}
+				children.add(new PhyloTree(children_str.substring(start, children_str.length())));
+			}
+			setLeafState();
+		}
+		else throw new IllegalArgumentException("Invalid Tree String: "+treestr);
 	}
 
 	/* ACCESSORS */
@@ -169,7 +240,7 @@ public class PhyloTree {
 	}
 
 	public String toString() {
-		return toString(50);
+		return toString(100);
 	}
 
 	/**
@@ -188,10 +259,9 @@ public class PhyloTree {
 	 */
 	private String toString(String prefix, boolean isTail, double ratio) {
 		String s = "";
-		//TODO add branch length
 		String branchspace = "", branchdash = "";
 		double branchchars = (ratio == ratio) ? ratio * branchlength : 0;
-		for (int i = 1; i <= branchchars; i++) {
+		for (int i = 0; i <= branchchars; i++) {
 			branchspace += " ";
 			branchdash += "-";
 		}
@@ -211,5 +281,28 @@ public class PhyloTree {
 		}
 
 		return s;
+	}
+
+	public String toNewickString(){return toNewickString(true);}
+	public String toNewickString(boolean isRoot){
+		String s = "";
+		if(!isLeaf){
+			s+="(";
+			for(int i=0; i<children.size()-1; i++){
+				s+=children.get(i).toNewickString(false)+",";
+			}
+			s+=children.get(children.size()-1).toNewickString(false);
+			s+=")";
+		}
+		if(organism != null) s+=organism.name;
+		if(branchlength!=0) s+=":"+String.valueOf(branchlength).replaceAll("\\.?0+$", "");
+		if(isRoot) s+=";";
+		return s;
+	}
+	
+	public static void main(String[] args) {
+		PhyloTree t = new PhyloTree("((C,(D))B,(G,H)F)A;");
+		System.out.println(t);
+		System.out.println(t.toNewickString());
 	}
 }

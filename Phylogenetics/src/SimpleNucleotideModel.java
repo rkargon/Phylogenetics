@@ -19,9 +19,4 @@ public class SimpleNucleotideModel extends SubstitutionModel<Nucleotide> {
 		else return 1;
 	}
 
-	@Override
-	public boolean equal(Nucleotide x, Nucleotide y) {
-		return x.equals(y);
-	}
-
 }

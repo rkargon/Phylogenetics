@@ -1,6 +1,6 @@
 /**
  * Describes a substitution model, along with methods to find the "distance"
- * between two traits and to determine if the traits are equal.
+ * between two traits.
  * 
  * @author raphaelkargon
  * 
@@ -29,6 +29,4 @@ public abstract class SubstitutionModel<T> {
 		
 		return total_dist;
 	}
-	
-	public abstract boolean equal(T x, T y);
 }
